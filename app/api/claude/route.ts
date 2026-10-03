@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: model || 'claude-3-5-sonnet-20241022',
+        model: model || 'claude-sonnet-5-5',
         max_tokens: 4096,
         messages: messages,
         stream: stream,

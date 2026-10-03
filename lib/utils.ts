@@ -34,21 +34,17 @@ export function formatDate(date: Date): string {
   }).format(new Date(date));
 }
 
-// Prix des modèles Claude (par million de tokens)
-export const MODEL_PRICING = {
-  'claude-3-5-sonnet-20241022': { input: 3, output: 15, name: 'Claude 3.5 Sonnet' },
-  'claude-3-opus-20240229': { input: 15, output: 75, name: 'Claude 3 Opus' },
-  'claude-3-sonnet-20240229': { input: 3, output: 15, name: 'Claude 3 Sonnet' },
-  'claude-3-haiku-20240307': { input: 0.25, output: 1.25, name: 'Claude 3 Haiku' },
+// Prix connus des modèles Claude (USD par million de tokens).
+// Modèle absent de la table : pas d'estimation de coût plutôt qu'un chiffre faux.
+export const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  'claude-haiku-4-5-20251001': { input: 1, output: 5 },
 };
 
-export function calculateCost(inputTokens: number, outputTokens: number, model: string): number {
-  const pricing = MODEL_PRICING[model as keyof typeof MODEL_PRICING] || MODEL_PRICING['claude-3-5-sonnet-20241022'];
-  
-  const inputCost = (inputTokens / 1000000) * pricing.input;
-  const outputCost = (outputTokens / 1000000) * pricing.output;
-  
-  return inputCost + outputCost;
+export function calculateCost(inputTokens: number, outputTokens: number, model: string): number | null {
+  const pricing = MODEL_PRICING[model];
+  if (!pricing) return null;
+
+  return (inputTokens / 1000000) * pricing.input + (outputTokens / 1000000) * pricing.output;
 }
 
 export function formatCost(cost: number): string {

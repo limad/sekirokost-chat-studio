@@ -4,7 +4,9 @@ export const runtime = 'edge';
 
 export async function POST(request: NextRequest) {
   try {
-    const { ollamaUrl, model, messages, stream = true } = await request.json();
+    const body = await request.json();
+    const { model, messages, stream = true, think = false } = body;
+    const ollamaUrl = typeof body.ollamaUrl === 'string' ? body.ollamaUrl.trim().replace(/\/+$/, '') : body.ollamaUrl;
 
     console.log('Ollama API Request received:', {
       hasOllamaUrl: !!ollamaUrl,
@@ -47,6 +49,7 @@ export async function POST(request: NextRequest) {
         model,
         messages,
         stream: stream,
+        think,
       }),
     });
 

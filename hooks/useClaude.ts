@@ -20,7 +20,7 @@ interface ClaudeResponse {
 export function useClaude() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { addMessage, updateMessage, updateSessionStatus, updateTokenUsage, apiKey, apiUrl, selectedModel, provider, ollamaUrl } = useAppStore();
+  const { addMessage, updateMessage, updateSessionStatus, updateTokenUsage, apiKey, apiUrl, selectedModel, provider, ollamaUrl, ollamaThink, systemPrompt } = useAppStore();
 
   const sendMessage = useCallback(
     async (
@@ -74,8 +74,13 @@ export function useClaude() {
           ? {
               ollamaUrl,
               model: selectedModel,
-              messages: [...history, { role: 'user', content: message }],
+              messages: [
+                ...(systemPrompt?.trim() ? [{ role: 'system', content: systemPrompt.trim() }] : []),
+                ...history,
+                { role: 'user', content: message },
+              ],
               stream: true,
+              think: ollamaThink,
             }
           : {
               apiKey,
@@ -223,7 +228,7 @@ export function useClaude() {
         return null;
       }
     },
-    [addMessage, updateMessage, updateSessionStatus, updateTokenUsage, apiKey, apiUrl, selectedModel, provider, ollamaUrl]
+    [addMessage, updateMessage, updateSessionStatus, updateTokenUsage, apiKey, apiUrl, selectedModel, provider, ollamaUrl, ollamaThink, systemPrompt]
   );
 
   return {

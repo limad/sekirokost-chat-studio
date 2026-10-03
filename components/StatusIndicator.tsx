@@ -9,12 +9,8 @@ export function StatusIndicator() {
   // Déterminer le nom du modèle selon le provider
   const getModelName = () => {
     if (provider === 'ollama') {
-      // Extraire le nom lisible du modèle Ollama
-      if (selectedModel.includes('kimi')) return 'Kimi';
-      if (selectedModel.includes('qwen')) return 'Qwen';
-      if (selectedModel.includes('glm')) return 'GLM';
-      if (selectedModel.includes('minimax')) return 'MiniMax';
-      return 'Ollama';
+      // Nom lisible : identifiant du modèle sans le tag (ex: qwen3.5:2b -> qwen3.5)
+      return selectedModel.split(':')[0] || 'Ollama';
     }
     return 'Claude';
   };

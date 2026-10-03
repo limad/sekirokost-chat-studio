@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { X, Key, CheckCircle2, XCircle, Loader2, Settings as SettingsIcon, Cpu, Download, Upload, Save, Trash2, FolderOpen } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { MODEL_PRICING } from '@/lib/utils';
-import { OLLAMA_MODELS } from '@/lib/ollama';
+import { useClaudeModels } from '@/hooks/useClaudeModels';
+import { DEFAULT_CLAUDE_MODEL } from '@/lib/claudeModels';
+import { useOllamaModels } from '@/hooks/useOllamaModels';
 import { exportData, importData, createAutoBackup, listAutoBackups, deleteAutoBackup } from '@/lib/backup';
 
 interface SettingsPanelProps {
@@ -13,16 +15,37 @@ interface SettingsPanelProps {
 
 export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const { 
-    apiKey, apiUrl, selectedModel, provider, ollamaUrl, backupPath,
-    setApiKey, setApiUrl, setSelectedModel, setProvider, setOllamaUrl, setBackupPath,
+    apiKey, apiUrl, selectedModel, provider, ollamaUrl, backupPath, systemPrompt,
+    setApiKey, setApiUrl, setSelectedModel, setProvider, setOllamaUrl, setBackupPath, setSystemPrompt,
     workspaces
   } = useAppStore();
   
   const [tempApiKey, setTempApiKey] = useState(apiKey || '');
   const [tempApiUrl, setTempApiUrl] = useState(apiUrl || 'https://api.anthropic.com/v1');
-  const [tempModel, setTempModel] = useState(selectedModel || 'claude-3-5-sonnet-20241022');
+  const [tempSystemPrompt, setTempSystemPrompt] = useState(systemPrompt ?? '');
+  const [tempModel, setTempModel] = useState(selectedModel || DEFAULT_CLAUDE_MODEL);
   const [tempProvider, setTempProvider] = useState(provider || 'anthropic');
   const [tempOllamaUrl, setTempOllamaUrl] = useState(ollamaUrl || 'http://localhost:11434');
+  const { models: claudeModels, error: claudeModelsError, loading: claudeLoading, fetched: claudeFetched, reload: reloadClaude } =
+    useClaudeModels(tempApiKey || null, tempApiUrl, tempProvider === 'anthropic');
+  const { models: fetchedModels, error: fetchModelsError, loading: fetchingModels, reload: reloadModels } =
+    useOllamaModels(tempOllamaUrl, tempProvider === 'ollama');
+  // Si le modèle choisi n'existe pas sur le serveur Ollama sélectionné, bascule sur un modèle présent
+  useEffect(() => {
+    if (tempProvider !== 'ollama' || fetchedModels.length === 0) return;
+    if (fetchedModels.some((m) => m.id === tempModel)) return;
+    setTempModel(fetchedModels[0].id);
+  }, [tempProvider, fetchedModels, tempModel]);
+
+  // Liste réelle du serveur Ollama (aucune liste statique)
+  const ollamaList = fetchedModels.map((m) => ({
+    id: m.id,
+    name: m.id,
+    type: (m.id.endsWith(':cloud') ? 'cloud' : 'local') as 'cloud' | 'local',
+    size: m.size ? `${(m.size / 1e9).toFixed(1)} Go` : '',
+    description: [m.parameterSize, m.thinking ? 'raisonnement' : ''].filter(Boolean).join(' · '),
+    recommended: false,
+  }));
   const [tempBackupPath, setTempBackupPath] = useState(backupPath || '/Users/julien/Documents/sekirokostchatstudio-backups');
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
@@ -42,6 +65,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setProvider(tempProvider);
     setOllamaUrl(tempOllamaUrl);
     setBackupPath(tempBackupPath);
+    setSystemPrompt(tempSystemPrompt);
     setTestResult(null);
     alert('✅ Paramètres sauvegardés !');
   };
@@ -63,6 +87,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         ? {
             ollamaUrl: tempOllamaUrl,
             model: tempModel,
+            stream: false,
             messages: [
               { role: 'user', content: 'Réponds simplement "OK" pour confirmer que la connexion fonctionne.' }
             ],
@@ -88,7 +113,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       if (response.ok) {
         const data = await response.json();
         setTestResult('success');
-        setTestMessage('Connexion réussie ! Claude a répondu : ' + data.content[0].text);
+        setTestMessage(`Connexion réussie ! ${tempProvider === 'ollama' ? tempModel : 'Claude'} a répondu : ` + data.content[0].text);
       } else {
         const error = await response.json();
         console.error('Test connection error:', error);
@@ -485,12 +510,26 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             
             {tempProvider === 'anthropic' ? (
               <>
+                <div className="flex items-center justify-between mb-2 text-xs">
+                  <span className={claudeModelsError ? 'text-yellow-500' : 'text-zinc-500'}>
+                    {claudeLoading
+                      ? 'Chargement des modèles…'
+                      : claudeModelsError
+                        ? `Liste par défaut (${claudeModelsError})`
+                        : claudeFetched
+                          ? `${claudeModels.length} modèle(s) disponibles sur ce compte`
+                          : 'Liste par défaut (entrez une clé API pour charger la liste réelle)'}
+                  </span>
+                  <button type="button" onClick={reloadClaude} className="text-blue-400 hover:underline">
+                    Actualiser
+                  </button>
+                </div>
                 <div className="space-y-2">
-                  {Object.entries(MODEL_PRICING).map(([modelId, pricing]) => (
+                  {claudeModels.map((m) => (
                     <label
-                      key={modelId}
+                      key={m.id}
                       className={`block p-3 border rounded-lg cursor-pointer transition ${
-                        tempModel === modelId
+                        tempModel === m.id
                           ? 'bg-blue-500/20 border-blue-500'
                           : 'bg-zinc-800/50 border-zinc-700 hover:border-zinc-600'
                       }`}
@@ -498,35 +537,51 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                       <input
                         type="radio"
                         name="model"
-                        value={modelId}
-                        checked={tempModel === modelId}
+                        value={m.id}
+                        checked={tempModel === m.id}
                         onChange={(e) => setTempModel(e.target.value)}
                         className="sr-only"
                       />
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-medium text-white">{pricing.name}</span>
-                        {modelId === 'claude-3-5-sonnet-20241022' && (
-                          <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded">
-                            Recommandé
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-4 text-xs text-zinc-400">
-                        <span>Input: ${pricing.input}/1M tokens</span>
-                        <span>•</span>
-                        <span>Output: ${pricing.output}/1M tokens</span>
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-white">{m.name}</span>
+                        <span className="text-xs text-zinc-500">
+                          {MODEL_PRICING[m.id]
+                            ? `$${MODEL_PRICING[m.id].input} / $${MODEL_PRICING[m.id].output} par 1M tokens`
+                            : m.id}
+                        </span>
                       </div>
                     </label>
                   ))}
                 </div>
-                <p className="text-xs text-zinc-600 mt-2">
-                  💡 Sonnet = Équilibré | Opus = Puissant | Haiku = Économique
-                </p>
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-zinc-300 mb-1">
+                    Autre modèle (saisie manuelle)
+                  </label>
+                  <input
+                    type="text"
+                    value={tempModel}
+                    onChange={(e) => setTempModel(e.target.value.trim())}
+                    placeholder="ex : claude-sonnet-5-5"
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
               </>
             ) : (
               <>
+                <div className="flex items-center justify-between mb-2 text-xs">
+                  <span className={fetchModelsError ? 'text-yellow-500' : 'text-zinc-500'}>
+                    {fetchingModels
+                      ? 'Chargement des modèles…'
+                      : fetchModelsError
+                        ? `Serveur injoignable (${fetchModelsError})`
+                        : `${fetchedModels.length} modèle(s) détecté(s) sur le serveur`}
+                  </span>
+                  <button type="button" onClick={reloadModels} className="text-blue-400 hover:underline">
+                    Actualiser
+                  </button>
+                </div>
                 <div className="space-y-2">
-                  {Object.entries(OLLAMA_MODELS).map(([modelId, info]) => (
+                  {ollamaList.map(({ id: modelId, ...info }) => (
                     <label
                       key={modelId}
                       className={`block p-3 border rounded-lg cursor-pointer transition ${
@@ -569,16 +624,43 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     </label>
                   ))}
                 </div>
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-zinc-300 mb-1">
+                    Autre modèle (saisie manuelle)
+                  </label>
+                  <input
+                    type="text"
+                    value={tempModel}
+                    onChange={(e) => setTempModel(e.target.value.trim())}
+                    placeholder="ex : llama3.2:1b ou un modèle :cloud"
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-green-500"
+                  />
+                </div>
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-zinc-300 mb-1">
+                    Prompt système
+                  </label>
+                  <textarea
+                    value={tempSystemPrompt}
+                    onChange={(e) => setTempSystemPrompt(e.target.value)}
+                    rows={3}
+                    placeholder="Ex : Tu es un assistant utile. Réponds toujours en français."
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-green-500"
+                  />
+                  <p className="text-xs text-zinc-600 mt-1">
+                    Envoyé au modèle Ollama avant chaque conversation. Laisser vide pour désactiver.
+                  </p>
+                </div>
                 <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
                   <p className="text-xs text-blue-300">
-                    {tempModel && OLLAMA_MODELS[tempModel as keyof typeof OLLAMA_MODELS]?.type === 'cloud' ? (
+                    {tempModel && tempModel.endsWith(':cloud') ? (
                       <>
                         ☁️ <strong>Modèle cloud :</strong> Aucun téléchargement nécessaire, fonctionne directement !
                       </>
                     ) : (
                       <>
                         💻 <strong>Modèle local :</strong> Téléchargez avec{' '}
-                        <code className="bg-zinc-800 px-1 rounded">ollama pull {tempModel || 'qwen3.5'}</code>
+                        <code className="bg-zinc-800 px-1 rounded">ollama pull {tempModel || '<modèle>'}</code>
                       </>
                     )}
                   </p>

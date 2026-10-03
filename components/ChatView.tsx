@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/utils';
 import { TokenCounter } from './TokenCounter';
 import { useClaude } from '@/hooks/useClaude';
+import { useOllamaModels } from '@/hooks/useOllamaModels';
+import { useClaudeModels } from '@/hooks/useClaudeModels';
 
 export function ChatView() {
   const {
@@ -15,13 +17,38 @@ export function ChatView() {
     updateSessionStatus,
     updateTokenUsage,
     currentSessionId,
+    provider,
+    ollamaUrl,
+    apiKey,
+    apiUrl,
+    selectedModel,
+    setSelectedModel,
+    ollamaThink,
+    setOllamaThink,
   } = useAppStore();
+  const { models: ollamaModels, error: modelsError } = useOllamaModels(ollamaUrl, provider === 'ollama');
+  const { models: claudeModels, fetched: claudeFetched } = useClaudeModels(apiKey, apiUrl, provider === 'anthropic');
 
   const { sendMessage, isLoading } = useClaude();
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const session = getCurrentSession();
+
+  // Modèle sélectionné absent du serveur (ancien identifiant statique) : bascule sur un modèle réel
+  useEffect(() => {
+    if (provider !== 'ollama' || ollamaModels.length === 0) return;
+    if (ollamaModels.some((m) => m.id === selectedModel)) return;
+    const close = ollamaModels.find((m) => m.id.split(':')[0] === selectedModel.split(':')[0]);
+    setSelectedModel((close || ollamaModels[0]).id);
+  }, [provider, ollamaModels, selectedModel, setSelectedModel]);
+
+  // Idem Claude : un identifiant périmé est remplacé une fois la liste réelle du compte chargée
+  useEffect(() => {
+    if (provider !== 'anthropic' || !claudeFetched || claudeModels.length === 0) return;
+    if (claudeModels.some((m) => m.id === selectedModel)) return;
+    setSelectedModel(claudeModels[0].id);
+  }, [provider, claudeFetched, claudeModels, selectedModel, setSelectedModel]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -52,7 +79,7 @@ export function ChatView() {
 
     // Build conversation history for context
     const history = session.messages
-      .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+      .filter(msg => (msg.role === 'user' || msg.role === 'assistant') && !msg.content.startsWith('❌') && msg.content.trim() !== '')
       .map(msg => ({
         role: msg.role as 'user' | 'assistant',
         content: msg.content,
@@ -96,7 +123,51 @@ export function ChatView() {
               {session.messages.length} message{session.messages.length > 1 ? 's' : ''}
             </p>
           </div>
-          <TokenCounter />
+          <div className="flex items-center gap-3">
+            {provider === 'anthropic' && (
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                title="Modèle Claude"
+                className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500"
+              >
+                {!claudeModels.some((m) => m.id === selectedModel) && (
+                  <option value={selectedModel}>{selectedModel}</option>
+                )}
+                {claudeModels.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            )}
+            {provider === 'ollama' && (
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  title={modelsError || 'Modèle Ollama'}
+                  className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:border-green-500"
+                >
+                  {!ollamaModels.some((m) => m.id === selectedModel) && (
+                    <option value={selectedModel}>{selectedModel}</option>
+                  )}
+                  {ollamaModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.id}{m.parameterSize ? ` (${m.parameterSize})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <label className="flex items-center gap-1 text-xs text-zinc-400 cursor-pointer" title="Mode raisonnement (plus lent)">
+                  <input
+                    type="checkbox"
+                    checked={ollamaThink}
+                    onChange={(e) => setOllamaThink(e.target.checked)}
+                  />
+                  Raisonnement
+                </label>
+              </div>
+            )}
+            <TokenCounter />
+          </div>
         </div>
       </div>
 

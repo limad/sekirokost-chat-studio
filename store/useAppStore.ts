@@ -14,6 +14,8 @@ interface AppState {
   selectedModel: string;
   provider: 'anthropic' | 'ollama';
   ollamaUrl: string;
+  ollamaThink: boolean;
+  systemPrompt: string;
   backupPath: string;
   
   // Actions
@@ -41,6 +43,8 @@ interface AppState {
   setSelectedModel: (model: string) => void;
   setProvider: (provider: 'anthropic' | 'ollama') => void;
   setOllamaUrl: (url: string) => void;
+  setOllamaThink: (think: boolean) => void;
+  setSystemPrompt: (prompt: string) => void;
   setBackupPath: (path: string) => void;
 }
 
@@ -58,9 +62,11 @@ export const useAppStore = create<AppState>()(
       showWelcomeScreen: false,
       apiKey: null,
       apiUrl: 'https://api.anthropic.com/v1',
-      selectedModel: 'claude-3-5-sonnet-20241022',
+      selectedModel: 'claude-sonnet-5-5',
       provider: 'anthropic',
       ollamaUrl: 'http://localhost:11434',
+      ollamaThink: false,
+      systemPrompt: 'Tu es un assistant utile. Réponds toujours en français, de façon claire et concise.',
       backupPath: '/Users/julien/Documents/sekirokostchatstudio-backups',
 
       addWorkspace: (name, color) => {
@@ -304,7 +310,15 @@ export const useAppStore = create<AppState>()(
       },
 
       setOllamaUrl: (url) => {
-        set({ ollamaUrl: url });
+        set({ ollamaUrl: url.trim() });
+      },
+
+      setSystemPrompt: (prompt) => {
+        set({ systemPrompt: prompt });
+      },
+
+      setOllamaThink: (think) => {
+        set({ ollamaThink: think });
       },
 
       setBackupPath: (path) => {
